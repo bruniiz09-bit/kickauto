@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kick Ultra-Low</title>
+    <style>
+        /* Optimizado para CPU de 1GHz: Sin animaciones ni sombras */
+        body { background: #000; color: #eee; font-family: sans-serif; text-align: center; padding: 15px; margin: 0; }
+        .container { max-width: 400px; margin: auto; }
+        input { width: 90%; padding: 15px; margin-bottom: 10px; background: #111; border: 1px solid #333; color: #53fc18; font-size: 18px; border-radius: 4px; }
+        button { width: 95%; padding: 15px; border: none; font-weight: bold; font-size: 16px; border-radius: 4px; cursor: pointer; }
+        
+        .btn-buscar { background: #53fc18; color: #000; margin-bottom: 20px; }
+        .btn-lanzar { background: #ff8800; color: #fff; display: none; margin-top: 15px; text-decoration: none; display: none; line-height: 50px; }
+        
+        #status { font-size: 20px; font-weight: bold; margin-top: 10px; }
+        #link-display { word-break: break-all; font-size: 10px; color: #444; margin-top: 15px; }
+        .success { color: #53fc18; }
+        .error { color: #ff4444; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="color: #53fc18;">Kick Go</h2>
+    
+    <input type="text" id="streamer" placeholder="Streamer..." autocomplete="off" spellcheck="false">
+    <button class="btn-buscar" onclick="procesar()">BUSCAR Y COPIAR</button>
+
+    <div id="status">Listo</div>
+    
+    <a id="btnLanzar" href="#" class="btn-lanzar">🚀 VER AHORA EN VLC</a>
+
+    <div id="link-display"></div>
+</div>
+
+<script>
+    let streamUrl = "";
+
+    async function procesar() {
+        const user = document.getElementById('streamer').value.trim().toLowerCase();
+        const status = document.getElementById('status');
+        const btnLanzar = document.getElementById('btnLanzar');
+        const linkDisplay = document.getElementById('link-display');
+
+        if (!user) return;
+
+        status.className = "";
+        status.innerText = "Buscando...";
+        btnLanzar.style.display = "none";
+        linkDisplay.innerText = "";
+
+        try {
+            // Usamos el proxy para evitar el bloqueo de Kick
+            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://kick.com/api/v1/channels/'+user)}`);
+            const data = await res.json();
+            const kickData = JSON.parse(data.contents);
+
+            if (kickData.playback_url) {
+                streamUrl = kickData.playback_url;
+                
+                // 1. Intentar copiar al portapapeles
+                const copiado = await copiarAlPortapapeles(streamUrl);
+                
+                if (copiado) {
+                    status.innerText = "link copiado";
+                    status.className = "success";
+                } else {
+                    status.innerText = "no se pudo copiar";
+                    status.className = "error";
+                }
+
+                // 2. Habilitar el botón para lanzar con click
+                btnLanzar.style.display = "block";
+                // Probamos con el protocolo de VLC
+                btnLanzar.href = "vlc://" + streamUrl; 
+                
+                linkDisplay.innerText = streamUrl;
+
+            } else {
+                status.innerText = "Streamer Offline";
+                status.className = "error";
+            }
+        } catch (e) {
+            status.innerText = "Error de red";
+            status.className = "error";
+        }
+    }
+
+    async function copiarAlPortapapeles(texto) {
+        try {
+            // Método moderno
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(texto);
+                return true;
+            } else {
+                // Método compatible con Android 9
+                const temp = document.createElement("textarea");
+                temp.value = texto;
+                document.body.appendChild(temp);
+                temp.select();
+                const res = document.execCommand("copy");
+                document.body.removeChild(temp);
+                return res;
+            }
+        } catch (err) {
+            return false;
+        }
+    }
+</script>
+
+</body>
+</html>
