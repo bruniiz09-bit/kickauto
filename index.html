@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kick Go</title>
+    <title>Kick Go Pro</title>
     <style>
         body { background: #000; color: #eee; font-family: sans-serif; text-align: center; padding: 15px; margin: 0; }
         .container { max-width: 400px; margin: auto; }
@@ -14,136 +14,141 @@
         .btn-lanzar { background: #ff8800; color: #fff; display: none; margin-top: 15px; text-decoration: none; line-height: 50px; font-weight: bold; border-radius: 4px; }
         .btn-copiar { background: #444; color: #fff; display: none; margin-top: 10px; }
         
-        #status { font-size: 20px; font-weight: bold; margin-top: 10px; }
+        #status { font-size: 18px; font-weight: bold; margin: 10px 0; min-height: 25px; }
         .success { color: #53fc18; }
         .error { color: #ff4444; }
 
         .fav-container { margin-top: 25px; text-align: left; border-top: 1px solid #222; padding-top: 10px; }
-        .fav-item { display: flex; align-items: center; background: #111; margin-bottom: 8px; padding: 12px; border-radius: 4px; border-left: 4px solid #53fc18; }
-        .fav-name { flex-grow: 1; font-weight: bold; cursor: pointer; color: #fff; }
-        .btn-del { color: #ff4444; padding: 5px 10px; font-weight: bold; cursor: pointer; border: 1px solid #333; font-size: 12px; }
+        .fav-item { display: flex; align-items: center; background: #111; margin-bottom: 8px; padding: 12px; border-radius: 4px; }
+        .fav-name { flex-grow: 1; font-weight: bold; cursor: pointer; color: #fff; display: flex; align-items: center; font-size: 16px; }
+        .btn-del { color: #ff4444; padding: 5px 10px; font-weight: bold; cursor: pointer; font-size: 14px; }
+
+        /* Indicadores de estado */
+        .dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; margin-right: 12px; background-color: #444; }
+        .online { background-color: #53fc18; box-shadow: 0 0 8px #53fc18; }
+        .offline { background-color: #ff4444; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2 style="color: #53fc18;">Kick Go</h2>
-    
-    <input type="text" id="streamer" placeholder="Streamer..." autocomplete="off" spellcheck="false">
-    <button class="btn-buscar" onclick="ejecutarAccion()">BUSCAR Y GUARDAR</button>
+    <input type="text" id="streamer" placeholder="Nombre del streamer..." autocomplete="off">
+    <button class="btn-buscar" onclick="nuevaBusqueda()">BUSCAR Y GUARDAR</button>
 
     <div id="status">Listo</div>
     
-    <a id="btnLanzar" href="#" class="btn-lanzar">🚀 VER AHORA EN VLC</a>
-    <button id="btnCopiarManual" class="btn-copiar" onclick="forzarCopiado()">📋 COPIAR ENLACE</button>
+    <a id="btnLanzar" href="#" class="btn-lanzar">🚀 VER EN VLC</a>
+    <button id="btnCopiar" class="btn-copiar" onclick="copiarLink()">📋 COPIAR ENLACE</button>
 
     <div class="fav-container">
-        <h4 style="color: #888;">RECIENTES:</h4>
+        <h4 style="color: #888; margin-bottom: 10px;">FAVORITOS:</h4>
         <div id="listaFavs"></div>
     </div>
 </div>
 
 <script>
-    let streamUrl = "";
+    let urlActual = "";
 
-    document.addEventListener('DOMContentLoaded', mostrarFavoritos);
+    // 1. Al cargar la página, dibujar lista y verificar estados
+    document.addEventListener('DOMContentLoaded', () => {
+        dibujarLista();
+        verificarTodos();
+    });
 
-    function ejecutarAccion() {
-        const user = document.getElementById('streamer').value.trim().toLowerCase();
-        if (!user) return;
-        guardarFavorito(user);
-        procesar(user);
+    async function checkUser(user) {
+        try {
+            const r = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://kick.com/api/v1/channels/'+user)}`);
+            const d = await r.json();
+            const data = JSON.parse(d.contents);
+            // Es online solo si livestream existe y no es nulo
+            return { online: (data.livestream !== null), url: data.playback_url };
+        } catch (e) { return { online: false, url: null }; }
+    }
+
+    async function verificarTodos() {
+        const favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
+        for (const user of favs) {
+            const estado = await checkUser(user);
+            actualizarUIEstado(user, estado.online);
+        }
+    }
+
+    function actualizarUIEstado(user, isOnline) {
+        const dot = document.getElementById(`dot-${user}`);
+        if (dot) dot.className = isOnline ? "dot online" : "dot offline";
     }
 
     async function procesar(user) {
         const status = document.getElementById('status');
-        const btnLanzar = document.getElementById('btnLanzar');
-        const btnCopiar = document.getElementById('btnCopiarManual');
+        const btnL = document.getElementById('btnLanzar');
+        const btnC = document.getElementById('btnCopiar');
 
+        status.innerText = "Consultando...";
         status.className = "";
-        status.innerText = "Buscando...";
-        btnLanzar.style.display = "none";
-        btnCopiar.style.display = "none";
+        btnL.style.display = "none";
+        btnC.style.display = "none";
 
-        try {
-            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://kick.com/api/v1/channels/'+user)}`);
-            const data = await res.json();
-            const kickData = JSON.parse(data.contents);
+        const info = await checkUser(user);
 
-            if (kickData.playback_url) {
-                streamUrl = kickData.playback_url;
-                
-                status.innerText = "¡Enlace listo!";
-                status.className = "success";
-
-                // Mostrar botones
-                btnLanzar.style.display = "block";
-                btnLanzar.href = "vlc://" + streamUrl; 
-                btnCopiar.style.display = "block";
-
-            } else {
-                status.innerText = "Streamer Offline";
-                status.className = "error";
-            }
-        } catch (e) {
-            status.innerText = "Error de red";
-            status.className = "error";
-        }
-    }
-
-    async function forzarCopiado() {
-        const exito = await copiarAlPortapapeles(streamUrl);
-        const status = document.getElementById('status');
-        if (exito) {
-            status.innerText = "¡Copiado!";
-            setTimeout(() => { status.innerText = "¡Enlace listo!"; }, 2000);
+        if (info.url && info.online) {
+            urlActual = info.url;
+            status.innerText = "¡EN VIVO!";
+            status.className = "success";
+            btnL.style.display = "block";
+            btnL.href = "vlc://" + urlActual;
+            btnC.style.display = "block";
+            actualizarUIEstado(user, true);
         } else {
-            alert("Error al copiar. Intenta de nuevo.");
+            status.innerText = "Está Offline";
+            status.className = "error";
+            actualizarUIEstado(user, false);
         }
     }
 
-    function guardarFavorito(user) {
+    function nuevaBusqueda() {
+        const user = document.getElementById('streamer').value.trim().toLowerCase();
+        if (!user) return;
+        
         let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
         if (!favs.includes(user)) {
             favs.push(user);
             localStorage.setItem('kick_favs', JSON.stringify(favs));
+            dibujarLista();
         }
-        mostrarFavoritos();
-        document.getElementById('streamer').value = ""; 
+        document.getElementById('streamer').value = "";
+        procesar(user);
     }
 
-    function mostrarFavoritos() {
+    function dibujarLista() {
         const lista = document.getElementById('listaFavs');
-        let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
+        const favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
         lista.innerHTML = favs.map(user => `
             <div class="fav-item">
-                <span class="fav-name" onclick="procesar('${user}')">${user}</span>
-                <span class="btn-del" onclick="eliminarFavorito('${user}')">X</span>
+                <span class="fav-name" onclick="procesar('${user}')">
+                    <span id="dot-${user}" class="dot"></span> ${user}
+                </span>
+                <span class="btn-del" onclick="eliminar('${user}')">✕</span>
             </div>
         `).join('');
     }
 
-    function eliminarFavorito(user) {
+    function eliminar(user) {
         let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]").filter(f => f !== user);
         localStorage.setItem('kick_favs', JSON.stringify(favs));
-        mostrarFavoritos();
+        dibujarLista();
+        verificarTodos();
     }
 
-    async function copiarAlPortapapeles(texto) {
-        try {
-            const temp = document.createElement("textarea");
-            temp.value = texto;
-            temp.style.position = "fixed";
-            temp.style.left = "-9999px";
-            document.body.appendChild(temp);
-            temp.select();
-            temp.setSelectionRange(0, 99999);
-            const res = document.execCommand("copy");
-            document.body.removeChild(temp);
-            return res;
-        } catch (err) { return false; }
+    function copiarLink() {
+        const t = document.createElement("textarea");
+        t.value = urlActual;
+        document.body.appendChild(t);
+        t.select();
+        document.execCommand("copy");
+        document.body.removeChild(t);
+        document.getElementById('status').innerText = "¡Copiado!";
     }
 </script>
-
 </body>
 </html>
