@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kick Ultra-Low</title>
+    <title>Kick Go</title>
     <style>
-        /* Optimizado para CPU de 1GHz: Sin animaciones ni sombras */
         body { background: #000; color: #eee; font-family: sans-serif; text-align: center; padding: 15px; margin: 0; }
         .container { max-width: 400px; margin: auto; }
         input { width: 90%; padding: 15px; margin-bottom: 10px; background: #111; border: 1px solid #333; color: #53fc18; font-size: 18px; border-radius: 4px; }
@@ -13,13 +12,12 @@
         
         .btn-buscar { background: #53fc18; color: #000; margin-bottom: 20px; }
         .btn-lanzar { background: #ff8800; color: #fff; display: none; margin-top: 15px; text-decoration: none; line-height: 50px; font-weight: bold; border-radius: 4px; }
+        .btn-copiar { background: #444; color: #fff; display: none; margin-top: 10px; }
         
         #status { font-size: 20px; font-weight: bold; margin-top: 10px; }
-        #link-display { word-break: break-all; font-size: 10px; color: #444; margin-top: 15px; }
         .success { color: #53fc18; }
         .error { color: #ff4444; }
 
-        /* Estilos para la lista de guardados */
         .fav-container { margin-top: 25px; text-align: left; border-top: 1px solid #222; padding-top: 10px; }
         .fav-item { display: flex; align-items: center; background: #111; margin-bottom: 8px; padding: 12px; border-radius: 4px; border-left: 4px solid #53fc18; }
         .fav-name { flex-grow: 1; font-weight: bold; cursor: pointer; color: #fff; }
@@ -37,26 +35,22 @@
     <div id="status">Listo</div>
     
     <a id="btnLanzar" href="#" class="btn-lanzar">🚀 VER AHORA EN VLC</a>
+    <button id="btnCopiarManual" class="btn-copiar" onclick="forzarCopiado()">📋 COPIAR ENLACE</button>
 
     <div class="fav-container">
         <h4 style="color: #888;">RECIENTES:</h4>
         <div id="listaFavs"></div>
     </div>
-
-    <div id="link-display"></div>
 </div>
 
 <script>
     let streamUrl = "";
 
-    // Cargar la lista al abrir la web
     document.addEventListener('DOMContentLoaded', mostrarFavoritos);
 
     function ejecutarAccion() {
         const user = document.getElementById('streamer').value.trim().toLowerCase();
         if (!user) return;
-        
-        // Guardar y procesar
         guardarFavorito(user);
         procesar(user);
     }
@@ -64,12 +58,12 @@
     async function procesar(user) {
         const status = document.getElementById('status');
         const btnLanzar = document.getElementById('btnLanzar');
-        const linkDisplay = document.getElementById('link-display');
+        const btnCopiar = document.getElementById('btnCopiarManual');
 
         status.className = "";
         status.innerText = "Buscando...";
         btnLanzar.style.display = "none";
-        linkDisplay.innerText = "";
+        btnCopiar.style.display = "none";
 
         try {
             const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://kick.com/api/v1/channels/'+user)}`);
@@ -79,19 +73,13 @@
             if (kickData.playback_url) {
                 streamUrl = kickData.playback_url;
                 
-                const copiado = await copiarAlPortapapeles(streamUrl);
-                
-                if (copiado) {
-                    status.innerText = "link copiado";
-                    status.className = "success";
-                } else {
-                    status.innerText = "no se pudo copiar";
-                    status.className = "error";
-                }
+                status.innerText = "¡Enlace listo!";
+                status.className = "success";
 
+                // Mostrar botones
                 btnLanzar.style.display = "block";
                 btnLanzar.href = "vlc://" + streamUrl; 
-                linkDisplay.innerText = streamUrl;
+                btnCopiar.style.display = "block";
 
             } else {
                 status.innerText = "Streamer Offline";
@@ -103,7 +91,16 @@
         }
     }
 
-    // --- NUEVAS FUNCIONES PARA GUARDAR ---
+    async function forzarCopiado() {
+        const exito = await copiarAlPortapapeles(streamUrl);
+        const status = document.getElementById('status');
+        if (exito) {
+            status.innerText = "¡Copiado!";
+            setTimeout(() => { status.innerText = "¡Enlace listo!"; }, 2000);
+        } else {
+            alert("Error al copiar. Intenta de nuevo.");
+        }
+    }
 
     function guardarFavorito(user) {
         let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
@@ -112,13 +109,12 @@
             localStorage.setItem('kick_favs', JSON.stringify(favs));
         }
         mostrarFavoritos();
-        document.getElementById('streamer').value = ""; // Limpiar el input
+        document.getElementById('streamer').value = ""; 
     }
 
     function mostrarFavoritos() {
         const lista = document.getElementById('listaFavs');
         let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
-        
         lista.innerHTML = favs.map(user => `
             <div class="fav-item">
                 <span class="fav-name" onclick="procesar('${user}')">${user}</span>
@@ -128,26 +124,23 @@
     }
 
     function eliminarFavorito(user) {
-        let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
-        favs = favs.filter(f => f !== user);
+        let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]").filter(f => f !== user);
         localStorage.setItem('kick_favs', JSON.stringify(favs));
         mostrarFavoritos();
     }
 
     async function copiarAlPortapapeles(texto) {
         try {
-            if (navigator.clipboard && window.isSecureContext) {
-                await navigator.clipboard.writeText(texto);
-                return true;
-            } else {
-                const temp = document.createElement("textarea");
-                temp.value = texto;
-                document.body.appendChild(temp);
-                temp.select();
-                const res = document.execCommand("copy");
-                document.body.removeChild(temp);
-                return res;
-            }
+            const temp = document.createElement("textarea");
+            temp.value = texto;
+            temp.style.position = "fixed";
+            temp.style.left = "-9999px";
+            document.body.appendChild(temp);
+            temp.select();
+            temp.setSelectionRange(0, 99999);
+            const res = document.execCommand("copy");
+            document.body.removeChild(temp);
+            return res;
         } catch (err) { return false; }
     }
 </script>
