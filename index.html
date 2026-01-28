@@ -12,12 +12,18 @@
         button { width: 95%; padding: 15px; border: none; font-weight: bold; font-size: 16px; border-radius: 4px; cursor: pointer; }
         
         .btn-buscar { background: #53fc18; color: #000; margin-bottom: 20px; }
-        .btn-lanzar { background: #ff8800; color: #fff; display: none; margin-top: 15px; text-decoration: none; display: none; line-height: 50px; }
+        .btn-lanzar { background: #ff8800; color: #fff; display: none; margin-top: 15px; text-decoration: none; line-height: 50px; font-weight: bold; border-radius: 4px; }
         
         #status { font-size: 20px; font-weight: bold; margin-top: 10px; }
         #link-display { word-break: break-all; font-size: 10px; color: #444; margin-top: 15px; }
         .success { color: #53fc18; }
         .error { color: #ff4444; }
+
+        /* Estilos para la lista de guardados */
+        .fav-container { margin-top: 25px; text-align: left; border-top: 1px solid #222; padding-top: 10px; }
+        .fav-item { display: flex; align-items: center; background: #111; margin-bottom: 8px; padding: 12px; border-radius: 4px; border-left: 4px solid #53fc18; }
+        .fav-name { flex-grow: 1; font-weight: bold; cursor: pointer; color: #fff; }
+        .btn-del { color: #ff4444; padding: 5px 10px; font-weight: bold; cursor: pointer; border: 1px solid #333; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -26,11 +32,16 @@
     <h2 style="color: #53fc18;">Kick Go</h2>
     
     <input type="text" id="streamer" placeholder="Streamer..." autocomplete="off" spellcheck="false">
-    <button class="btn-buscar" onclick="procesar()">BUSCAR Y COPIAR</button>
+    <button class="btn-buscar" onclick="ejecutarAccion()">BUSCAR Y GUARDAR</button>
 
     <div id="status">Listo</div>
     
     <a id="btnLanzar" href="#" class="btn-lanzar">🚀 VER AHORA EN VLC</a>
+
+    <div class="fav-container">
+        <h4 style="color: #888;">RECIENTES:</h4>
+        <div id="listaFavs"></div>
+    </div>
 
     <div id="link-display"></div>
 </div>
@@ -38,13 +49,22 @@
 <script>
     let streamUrl = "";
 
-    async function procesar() {
+    // Cargar la lista al abrir la web
+    document.addEventListener('DOMContentLoaded', mostrarFavoritos);
+
+    function ejecutarAccion() {
         const user = document.getElementById('streamer').value.trim().toLowerCase();
+        if (!user) return;
+        
+        // Guardar y procesar
+        guardarFavorito(user);
+        procesar(user);
+    }
+
+    async function procesar(user) {
         const status = document.getElementById('status');
         const btnLanzar = document.getElementById('btnLanzar');
         const linkDisplay = document.getElementById('link-display');
-
-        if (!user) return;
 
         status.className = "";
         status.innerText = "Buscando...";
@@ -52,7 +72,6 @@
         linkDisplay.innerText = "";
 
         try {
-            // Usamos el proxy para evitar el bloqueo de Kick
             const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent('https://kick.com/api/v1/channels/'+user)}`);
             const data = await res.json();
             const kickData = JSON.parse(data.contents);
@@ -60,7 +79,6 @@
             if (kickData.playback_url) {
                 streamUrl = kickData.playback_url;
                 
-                // 1. Intentar copiar al portapapeles
                 const copiado = await copiarAlPortapapeles(streamUrl);
                 
                 if (copiado) {
@@ -71,11 +89,8 @@
                     status.className = "error";
                 }
 
-                // 2. Habilitar el botón para lanzar con click
                 btnLanzar.style.display = "block";
-                // Probamos con el protocolo de VLC
                 btnLanzar.href = "vlc://" + streamUrl; 
-                
                 linkDisplay.innerText = streamUrl;
 
             } else {
@@ -88,14 +103,43 @@
         }
     }
 
+    // --- NUEVAS FUNCIONES PARA GUARDAR ---
+
+    function guardarFavorito(user) {
+        let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
+        if (!favs.includes(user)) {
+            favs.push(user);
+            localStorage.setItem('kick_favs', JSON.stringify(favs));
+        }
+        mostrarFavoritos();
+        document.getElementById('streamer').value = ""; // Limpiar el input
+    }
+
+    function mostrarFavoritos() {
+        const lista = document.getElementById('listaFavs');
+        let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
+        
+        lista.innerHTML = favs.map(user => `
+            <div class="fav-item">
+                <span class="fav-name" onclick="procesar('${user}')">${user}</span>
+                <span class="btn-del" onclick="eliminarFavorito('${user}')">X</span>
+            </div>
+        `).join('');
+    }
+
+    function eliminarFavorito(user) {
+        let favs = JSON.parse(localStorage.getItem('kick_favs') || "[]");
+        favs = favs.filter(f => f !== user);
+        localStorage.setItem('kick_favs', JSON.stringify(favs));
+        mostrarFavoritos();
+    }
+
     async function copiarAlPortapapeles(texto) {
         try {
-            // Método moderno
             if (navigator.clipboard && window.isSecureContext) {
                 await navigator.clipboard.writeText(texto);
                 return true;
             } else {
-                // Método compatible con Android 9
                 const temp = document.createElement("textarea");
                 temp.value = texto;
                 document.body.appendChild(temp);
@@ -104,9 +148,7 @@
                 document.body.removeChild(temp);
                 return res;
             }
-        } catch (err) {
-            return false;
-        }
+        } catch (err) { return false; }
     }
 </script>
 
